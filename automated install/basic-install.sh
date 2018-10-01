@@ -335,7 +335,7 @@ elif $(uname -a | grep FreeBSD &>/dev/null); then
     PKG_INSTALL=(${PKG_MANAGER} install -y)
     PKG_COUNT="${PKG_MANAGER} info | wc -l"
     INSTALLER_DEPS=(coreutils gsed gawk cdialog git newt)
-    PIHOLE_DEPS=(bind-tools curl findutils netcat sudo unzip wget libidn2 psmisc dnsmasq)
+    PIHOLE_DEPS=(nettle bind-tools curl findutils netcat sudo unzip wget libidn2 psmisc dnsmasq)
     PIHOLE_WEB_DEPS=(lighttpd php72 php72-pdo)
     LIGHTTPD_USER="www"
     LIGHTTPD_GROUP="www"
