@@ -140,6 +140,12 @@ show_ascii_berry() {
 }
 
 # Compatibility
+## Some commands (install, sed, awk) will have a g prefix on BSDs -- override these in the distro_check below
+INSTALL=install
+SED=sed
+AWK=awk
+
+
 distro_check() {
 # If apt-get is installed, then we know it's part of the Debian family
 if command -v apt-get &> /dev/null; then
@@ -327,13 +333,16 @@ elif $(uname -a | grep FreeBSD &>/dev/null); then
     UPDATE_PKG_CACHE=":"
     PKG_INSTALL=(${PKG_MANAGER} install -y)
     PKG_COUNT="${PKG_MANAGER} info | wc -l"
-    INSTALLER_DEPS=(coreutils gsed cdialog git newt)
-    PIHOLE_DEPS=(bind-tools curl findutils netcat sudo unzip wget libidn2 psmisc)
+    INSTALLER_DEPS=(coreutils gsed gawk cdialog git newt)
+    PIHOLE_DEPS=(bind-tools curl findutils netcat sudo unzip wget libidn2 psmisc dnsmasq)
     PIHOLE_WEB_DEPS=(lighttpd php72 php72-pdo)
     LIGHTTPD_USER="www"
     LIGHTTPD_GROUP="www"
     LIGHTTPD_CFG="lighttpd.conf.freebsd"
     PIHOLE_WEB_DEPS+=('php72-json')
+    INSTALL=ginstall
+    SED=gsed
+    AWK=gawk
 fi
 }
 
@@ -1216,33 +1225,33 @@ version_check_dnsmasq() {
     echo -e "${OVER}  ${TICK} Copying 01-pihole.conf to /etc/dnsmasq.d/01-pihole.conf"
     # Replace our placeholder values with the GLOBAL DNS variables that we populated earlier
     # First, swap in the interface to listen on
-    sed -i "s/@INT@/$PIHOLE_INTERFACE/" ${dnsmasq_pihole_01_location}
+    $SED -i "s/@INT@/$PIHOLE_INTERFACE/" ${dnsmasq_pihole_01_location}
     if [[ "${PIHOLE_DNS_1}" != "" ]]; then
         # Then swap in the primary DNS server
-        sed -i "s/@DNS1@/$PIHOLE_DNS_1/" ${dnsmasq_pihole_01_location}
+        $SED -i "s/@DNS1@/$PIHOLE_DNS_1/" ${dnsmasq_pihole_01_location}
     else
         #
-        sed -i '/^server=@DNS1@/d' ${dnsmasq_pihole_01_location}
+        $SED -i '/^server=@DNS1@/d' ${dnsmasq_pihole_01_location}
     fi
     if [[ "${PIHOLE_DNS_2}" != "" ]]; then
         # Then swap in the primary DNS server
-        sed -i "s/@DNS2@/$PIHOLE_DNS_2/" ${dnsmasq_pihole_01_location}
+        $SED -i "s/@DNS2@/$PIHOLE_DNS_2/" ${dnsmasq_pihole_01_location}
     else
         #
-        sed -i '/^server=@DNS2@/d' ${dnsmasq_pihole_01_location}
+        $SED -i '/^server=@DNS2@/d' ${dnsmasq_pihole_01_location}
     fi
 
     #
-    sed -i 's/^#conf-dir=\/etc\/dnsmasq.d$/conf-dir=\/etc\/dnsmasq.d/' ${dnsmasq_conf}
+    $SED -i 's/^#conf-dir=\/etc\/dnsmasq.d$/conf-dir=\/etc\/dnsmasq.d/' ${dnsmasq_conf}
 
     # If the user does not want to enable logging,
     if [[ "${QUERY_LOGGING}" == false ]] ; then
         # Disable it by commenting out the directive in the DNS config file
-        sed -i 's/^log-queries/#log-queries/' ${dnsmasq_pihole_01_location}
+        $SED -i 's/^log-queries/#log-queries/' ${dnsmasq_pihole_01_location}
     # Otherwise,
     else
         # enable it by uncommenting the directive in the DNS config file
-        sed -i 's/^#log-queries/log-queries/' ${dnsmasq_pihole_01_location}
+        $SED -i 's/^#log-queries/log-queries/' ${dnsmasq_pihole_01_location}
     fi
 }
 
@@ -1313,7 +1322,7 @@ installConfigs() {
     version_check_dnsmasq
     # Install empty file if it does not exist
     if [[ ! -f "${PI_HOLE_CONFIG_DIR}/pihole-FTL.conf" ]]; then
-        if ! install -o pihole -g pihole -m 664 /dev/null "${PI_HOLE_CONFIG_DIR}/pihole-FTL.conf" &>/dev/nul; then
+        if ! $INSTALL -o pihole -g pihole -m 664 /dev/null "${PI_HOLE_CONFIG_DIR}/pihole-FTL.conf" &>/dev/null; then
             echo -e "  ${COL_LIGHT_RED}Error: Unable to initialize configuration file ${PI_HOLE_CONFIG_DIR}/pihole-FTL.conf"
             return 1
         fi
@@ -1326,11 +1335,16 @@ installConfigs() {
     # If the user chose to install the dashboard,
     if [[ "${INSTALL_WEB_SERVER}" == true ]]; then
         # and if the Web server conf directory does not exist,
-        if [[ ! -d "/etc/lighttpd" ]]; then
+        if [[ ! -d "${LIGHTTPD_CONF_DIR}" ]]; then
             # make it
-            mkdir /etc/lighttpd
+            mkdir ${LIGHTTPD_CONF_DIR}
             # and set the owners
-            chown "${USER}":root /etc/lighttpd
+	    if [ $OS_FAMILY == "linux" ]; then
+		    chown "${USER}":root ${LIGHTTPD_CONF_DIR}
+	    elif [ $OS_FAMILY == "freebsd" ]; then
+		    chown "${USER}":wheel ${LIGHTTPD_CONF_DIR}
+	    fi
+
         # Otherwise, if the config file already exists
         elif [[ -f "/etc/lighttpd/lighttpd.conf" ]]; then
             # back up the original
@@ -1340,7 +1354,7 @@ installConfigs() {
         cp ${PI_HOLE_LOCAL_REPO}/advanced/${LIGHTTPD_CFG} /etc/lighttpd/lighttpd.conf
         # if there is a custom block page in the html/pihole directory, replace 404 handler in lighttpd config
         if [[ -f "/var/www/html/pihole/custom.php" ]]; then
-            sed -i 's/^\(server\.error-handler-404\s*=\s*\).*$/\1"pihole\/custom\.php"/' /etc/lighttpd/lighttpd.conf
+            $SED -i 's/^\(server\.error-handler-404\s*=\s*\).*$/\1"pihole\/custom\.php"/' /etc/lighttpd/lighttpd.conf
         fi
         # Make the directories if they do not exist and set the owners
         mkdir -p /var/run/lighttpd
@@ -1439,7 +1453,7 @@ enable_service() {
     elif [ $OS_FAMILY == "freebsd" ]; then
 	    if $(grep "$1" /etc/rc.conf); then
 		    # Make sure it's enabled
-		    sed -i -e "'s/^${1}_enable=\".*$/${1}_enable="YES"/g'" rc.conf
+		    $SED -i -e "'s/^${1}_enable=\".*$/${1}_enable="YES"/g'" rc.conf
 	    else
 		    echo "${1}_enable=\"YES\"" >> /etc/rc.conf
 	    fi
@@ -1676,9 +1690,9 @@ installCron() {
     # Copy the cron file over from the local repo
     cp ${PI_HOLE_LOCAL_REPO}/advanced/Templates/pihole.cron /etc/cron.d/pihole
     # Randomize gravity update time
-    sed -i "s/59 1 /$((1 + RANDOM % 58)) $((3 + RANDOM % 2))/" /etc/cron.d/pihole
+    $SED -i "s/59 1 /$((1 + RANDOM % 58)) $((3 + RANDOM % 2))/" /etc/cron.d/pihole
     # Randomize update checker time
-    sed -i "s/59 17/$((1 + RANDOM % 58)) $((12 + RANDOM % 8))/" /etc/cron.d/pihole
+    $SED -i "s/59 17/$((1 + RANDOM % 58)) $((12 + RANDOM % 8))/" /etc/cron.d/pihole
     echo -e "${OVER}  ${TICK} ${str}"
 }
 
@@ -1769,7 +1783,7 @@ finalExports() {
     # If the setup variable file exists,
     if [[ -e "${setupVars}" ]]; then
         # update the variables in the file
-        sed -i.update.bak '/PIHOLE_INTERFACE/d;/IPV4_ADDRESS/d;/IPV6_ADDRESS/d;/PIHOLE_DNS_1/d;/PIHOLE_DNS_2/d;/QUERY_LOGGING/d;/INSTALL_WEB_SERVER/d;/INSTALL_WEB_INTERFACE/d;/LIGHTTPD_ENABLED/d;' "${setupVars}"
+        $SED -i.update.bak '/PIHOLE_INTERFACE/d;/IPV4_ADDRESS/d;/IPV6_ADDRESS/d;/PIHOLE_DNS_1/d;/PIHOLE_DNS_2/d;/QUERY_LOGGING/d;/INSTALL_WEB_SERVER/d;/INSTALL_WEB_INTERFACE/d;/LIGHTTPD_ENABLED/d;' "${setupVars}"
     fi
     # echo the information to the user
     {
@@ -1813,7 +1827,7 @@ installLogrotate() {
     # If the variable has a value,
     if [[ ! -z "${logusergroup}" ]]; then
         #
-        sed -i "s/# su #/su ${logusergroup}/g;" ${PI_HOLE_CONFIG_DIR}/logrotate
+        $SED -i "s/# su #/su ${logusergroup}/g;" ${PI_HOLE_CONFIG_DIR}/logrotate
     fi
     echo -e "${OVER}  ${TICK} ${str}"
 }
@@ -1821,14 +1835,14 @@ installLogrotate() {
 # At some point in the future this list can be pruned, for now we'll need it to ensure updates don't break.
 # Refactoring of install script has changed the name of a couple of variables. Sort them out here.
 accountForRefactor() {
-    sed -i 's/piholeInterface/PIHOLE_INTERFACE/g' ${setupVars}
-    sed -i 's/IPv4_address/IPV4_ADDRESS/g' ${setupVars}
-    sed -i 's/IPv4addr/IPV4_ADDRESS/g' ${setupVars}
-    sed -i 's/IPv6_address/IPV6_ADDRESS/g' ${setupVars}
-    sed -i 's/piholeIPv6/IPV6_ADDRESS/g' ${setupVars}
-    sed -i 's/piholeDNS1/PIHOLE_DNS_1/g' ${setupVars}
-    sed -i 's/piholeDNS2/PIHOLE_DNS_2/g' ${setupVars}
-    sed -i 's/^INSTALL_WEB=/INSTALL_WEB_INTERFACE=/' ${setupVars}
+    $SED -i 's/piholeInterface/PIHOLE_INTERFACE/g' ${setupVars}
+    $SED -i 's/IPv4_address/IPV4_ADDRESS/g' ${setupVars}
+    $SED -i 's/IPv4addr/IPV4_ADDRESS/g' ${setupVars}
+    $SED -i 's/IPv6_address/IPV6_ADDRESS/g' ${setupVars}
+    $SED -i 's/piholeIPv6/IPV6_ADDRESS/g' ${setupVars}
+    $SED -i 's/piholeDNS1/PIHOLE_DNS_1/g' ${setupVars}
+    $SED -i 's/piholeDNS2/PIHOLE_DNS_2/g' ${setupVars}
+    $SED -i 's/^INSTALL_WEB=/INSTALL_WEB_INTERFACE=/' ${setupVars}
     # Add 'INSTALL_WEB_SERVER', if its not been applied already: https://github.com/pi-hole/pi-hole/pull/2115
     if ! grep -q '^INSTALL_WEB_SERVER=' ${setupVars}; then
         local webserver_installed=false
