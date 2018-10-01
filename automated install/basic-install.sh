@@ -145,6 +145,7 @@ distro_check() {
 if command -v apt-get &> /dev/null; then
     # Set the OS family to linux
     OS_FAMILY="linux"
+    LIGHTTPD_CONF_DIR="/etc/lighttpd"
     # Set some global variables here
     # We don't set them earlier since the family might be Red Hat, so these values would be different
     PKG_MANAGER="apt-get"
@@ -230,6 +231,7 @@ if command -v apt-get &> /dev/null; then
 elif command -v rpm &> /dev/null; then
     # Set the OS family to linux
     OS_FAMILY="linux"
+    LIGHTTPD_CONF_DIR="/etc/lighttpd"
     # Then check if dnf or yum is the package manager
     if command -v dnf &> /dev/null; then
         PKG_MANAGER="dnf"
@@ -319,6 +321,7 @@ elif command -v rpm &> /dev/null; then
 elif $(uname -a | grep FreeBSD &>/dev/null); then
     # Set the OS family to FreeBSD
     OS_FAMILY="freebsd"
+    LIGHTTPD_CONF_DIR="/usr/local/etc/lighttpd"
     PKG_MANAGER="pkg"
     UPDATE_PKG_CACHE=":"
     PKG_INSTALL=(${PKG_MANAGER} install -y)
@@ -328,7 +331,7 @@ elif $(uname -a | grep FreeBSD &>/dev/null); then
     PIHOLE_WEB_DEPS=(lighttpd php72 php72-pdo)
     LIGHTTPD_USER="lighttpd"
     LIGHTTPD_GROUP="lighttpd"
-    LIGHTTPD_CFG="lighttpd.conf"
+    LIGHTTPD_CFG="lighttpd.conf.freebsd"
     PIHOLE_WEB_DEPS+=('php72-json')
 fi
 }
@@ -1416,16 +1419,25 @@ enable_service() {
     # Local, named variables
     local str="Enabling ${1} service to start on reboot"
     echo -ne "  ${INFO} ${str}..."
-    # If systemctl exists,
-    if command -v systemctl &> /dev/null; then
-        # use that to enable the service
-        systemctl enable "${1}" &> /dev/null
-    # Otherwise,
-    else
-        # use update-rc.d to accomplish this
-        update-rc.d "${1}" defaults &> /dev/null
+    if [ $OS_FAMILY == "linux" ]; then
+	    # If systemctl exists,
+	    if command -v systemctl &> /dev/null; then
+		# use that to enable the service
+		systemctl enable "${1}" &> /dev/null
+	    # Otherwise,
+	    else
+		# use update-rc.d to accomplish this
+		update-rc.d "${1}" defaults &> /dev/null
+	    fi
+	    echo -e "${OVER}  ${TICK} ${str}"
+    elif [ $OS_FAMILY == "freebsd" ]; then
+	    if $(grep ${1} /etc/rc.conf); then
+		    # Make sure it's enabled
+		    sed -i -e "'s/^${1}_enable=\".*$/${1}_enable="YES"/g'" rc.conf
+	    else
+		    echo "${1}_enable=\"YES\"" >> /etc/rc.conf
+	    fi
     fi
-    echo -e "${OVER}  ${TICK} ${str}"
 }
 
 # Disable service so that it will not with next reboot
