@@ -29,9 +29,9 @@ set -e
 # It's still a work in progress, so you may see some variance in this guideline until it is complete
 
 # Location for final installation log storage
-installLogLoc=/etc/pihole/install.log
+installLogLoc=${PI_HOLE_CONFIG_DIR}/install.log
 # This is an important file as it contains information specific to the machine it's being installed on
-setupVars=/etc/pihole/setupVars.conf
+setupVars=${PI_HOLE_CONFIG_DIR}/setupVars.conf
 # Pi-hole uses lighttpd as a Web server, and this is the config file for it
 # shellcheck disable=SC2034
 lighttpdConfig=/etc/lighttpd/lighttpd.conf
@@ -50,8 +50,8 @@ PI_HOLE_INSTALL_DIR="/opt/pihole"
 PI_HOLE_CONFIG_DIR="/etc/pihole"
 useUpdateVars=false
 
-adlistFile="/etc/pihole/adlists.list"
-regexFile="/etc/pihole/regex.list"
+adlistFile="${PI_HOLE_CONF_DIR}/adlists.list"
+regexFile="${PI_HOLE_CONF_DIR}/regex.list"
 # Pi-hole needs an IP address; to begin, these variables are empty since we don't know what the IP is until
 # this script can run
 IPV4_ADDRESS=""
@@ -322,11 +322,12 @@ elif $(uname -a | grep FreeBSD &>/dev/null); then
     # Set the OS family to FreeBSD
     OS_FAMILY="freebsd"
     LIGHTTPD_CONF_DIR="/usr/local/etc/lighttpd"
+    PI_HOLE_CONFIG_DIR="/usr/local/etc/pihole"
     PKG_MANAGER="pkg"
     UPDATE_PKG_CACHE=":"
     PKG_INSTALL=(${PKG_MANAGER} install -y)
     PKG_COUNT="${PKG_MANAGER} info | wc -l"
-    INSTALLER_DEPS=(cdialog git newt)
+    INSTALLER_DEPS=(coreutils gsed cdialog git newt)
     PIHOLE_DEPS=(bind-tools curl findutils netcat sudo unzip wget libidn2 psmisc)
     PIHOLE_WEB_DEPS=(lighttpd php72 php72-pdo)
     LIGHTTPD_USER="www"
@@ -1173,7 +1174,7 @@ version_check_dnsmasq() {
     # Local, named variables
     local dnsmasq_conf="/etc/dnsmasq.conf"
     local dnsmasq_conf_orig="/etc/dnsmasq.conf.orig"
-    local dnsmasq_pihole_id_string="addn-hosts=/etc/pihole/gravity.list"
+    local dnsmasq_pihole_id_string="addn-hosts=${PI_HOLE_CONFIG_DIR}/gravity.list"
     local dnsmasq_original_config="${PI_HOLE_LOCAL_REPO}/advanced/dnsmasq.conf.original"
     local dnsmasq_pihole_01_snippet="${PI_HOLE_LOCAL_REPO}/advanced/01-pihole.conf"
     local dnsmasq_pihole_01_location="/etc/dnsmasq.d/01-pihole.conf"
@@ -1280,14 +1281,19 @@ installScripts() {
         #  -Dm755 create all leading components of destination except the last, then copy the source to the destination and setting the permissions to 755
         #
         # This first one is the directory
-        install -o "${USER}" -Dm755 -d "${PI_HOLE_INSTALL_DIR}"
+	if [ OS_FAMILY == "linux" ]; then
+		INSTALL=install
+	elif [ $OS_FAMILY == "freebsd" ]; then
+		INSTALL=ginstall
+	fi
+        $INSTALL -o "${USER}" -Dm755 -d "${PI_HOLE_INSTALL_DIR}"
         # The rest are the scripts Pi-hole needs
-        install -o "${USER}" -Dm755 -t "${PI_HOLE_INSTALL_DIR}" gravity.sh
-        install -o "${USER}" -Dm755 -t "${PI_HOLE_INSTALL_DIR}" ./advanced/Scripts/*.sh
-        install -o "${USER}" -Dm755 -t "${PI_HOLE_INSTALL_DIR}" ./automated\ install/uninstall.sh
-        install -o "${USER}" -Dm755 -t "${PI_HOLE_INSTALL_DIR}" ./advanced/Scripts/COL_TABLE
-        install -o "${USER}" -Dm755 -t /usr/local/bin/ pihole
-        install -Dm644 ./advanced/bash-completion/pihole /etc/bash_completion.d/pihole
+        $INSTALL -o "${USER}" -Dm755 -t "${PI_HOLE_INSTALL_DIR}" gravity.sh
+        $INSTALL -o "${USER}" -Dm755 -t "${PI_HOLE_INSTALL_DIR}" ./advanced/Scripts/*.sh
+        $INSTALL -o "${USER}" -Dm755 -t "${PI_HOLE_INSTALL_DIR}" ./automated\ install/uninstall.sh
+        $INSTALL -o "${USER}" -Dm755 -t "${PI_HOLE_INSTALL_DIR}" ./advanced/Scripts/COL_TABLE
+        $INSTALL -o "${USER}" -Dm755 -t /usr/local/bin/ pihole
+        $INSTALL -Dm644 ./advanced/bash-completion/pihole /etc/bash_completion.d/pihole
         echo -e "${OVER}  ${TICK} ${str}"
 
     # Otherwise,
@@ -1796,7 +1802,7 @@ installLogrotate() {
     echo ""
     echo -ne "  ${INFO} ${str}..."
     # Copy the file over from the local repo
-    cp ${PI_HOLE_LOCAL_REPO}/advanced/Templates/logrotate /etc/pihole/logrotate
+    cp ${PI_HOLE_LOCAL_REPO}/advanced/Templates/logrotate ${PI_HOLE_CONFIG_DIR}/logrotate
     # Different operating systems have different user / group
     # settings for logrotate that makes it impossible to create
     # a static logrotate file that will work with e.g.
@@ -1807,7 +1813,7 @@ installLogrotate() {
     # If the variable has a value,
     if [[ ! -z "${logusergroup}" ]]; then
         #
-        sed -i "s/# su #/su ${logusergroup}/g;" /etc/pihole/logrotate
+        sed -i "s/# su #/su ${logusergroup}/g;" ${PI_HOLE_CONFIG_DIR}/logrotate
     fi
     echo -e "${OVER}  ${TICK} ${str}"
 }
@@ -1928,7 +1934,7 @@ displayFinalMessage() {
     if [[ "${#1}" -gt 0 ]] ; then
         pwstring="$1"
         # else, if the dashboard password in the setup variables exists,
-    elif [[ $(grep 'WEBPASSWORD' -c /etc/pihole/setupVars.conf) -gt 0 ]]; then
+    elif [[ $(grep 'WEBPASSWORD' -c ${PI_HOLE_CONFIG_DIR}/setupVars.conf) -gt 0 ]]; then
         # set a variable for evaluation later
         pwstring="unchanged"
     else
@@ -1951,7 +1957,7 @@ IPv6:	${IPV6_ADDRESS:-"Not Configured"}
 
 If you set a new IP address, you should restart the Pi.
 
-The install log is in /etc/pihole.
+The install log is in ${PI_HOLE_CONFIG_DIR}
 
 ${additional}" ${r} ${c}
 }
@@ -2135,8 +2141,8 @@ FTLinstall() {
     local ftlBranch
     local url
 
-    if [[ -f "/etc/pihole/ftlbranch" ]];then
-        ftlBranch=$(</etc/pihole/ftlbranch)
+    if [[ -f "${PI_HOLE_CONFIG_DIR}/ftlbranch" ]];then
+        ftlBranch=$(<${PI_HOLE_CONFIG_DIR}/ftlbranch)
     else
         ftlBranch="master"
     fi
@@ -2284,8 +2290,8 @@ FTLcheckUpdate() {
 
     local ftlBranch
 
-    if [[ -f "/etc/pihole/ftlbranch" ]];then
-        ftlBranch=$(</etc/pihole/ftlbranch)
+    if [[ -f "${PI_HOLE_CONFIG_DIR}/ftlbranch" ]];then
+        ftlBranch=$(<${PI_HOLE_CONFIG_DIR}/ftlbranch)
     else
         ftlBranch="master"
     fi
@@ -2465,7 +2471,7 @@ main() {
         # Display welcome dialogs
         welcomeDialogs
         # Create directory for Pi-hole storage
-        mkdir -p /etc/pihole/
+        mkdir -p ${PI_HOLE_CONFIG_DIR} ## /etc/pihole/
         # Determine available interfaces
         get_available_interfaces
         # Find interfaces and let the user choose one
@@ -2519,7 +2525,7 @@ main() {
         # Add password to web UI if there is none
         pw=""
         # If no password is set,
-        if [[ $(grep 'WEBPASSWORD' -c /etc/pihole/setupVars.conf) == 0 ]] ; then
+        if [[ $(grep 'WEBPASSWORD' -c ${PI_HOLE_CONFIG_DIR}/setupVars.conf) == 0 ]] ; then
             # generate a random password
             pw=$(tr -dc _A-Z-a-z-0-9 < /dev/urandom | head -c 8)
             # shellcheck disable=SC1091
