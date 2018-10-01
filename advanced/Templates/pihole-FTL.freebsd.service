@@ -1,0 +1,99 @@
+#!/bin/sh
+
+# $FreeBSD: branches/2018Q3/dns/pihole-FTL/files/pihole-FTL.in 363645 2014-07-31 17:56:45Z mandree $
+#
+# PROVIDE: pihole-FTL
+# REQUIRE: SERVERS ldconfig
+# BEFORE:  DAEMON named
+# KEYWORD: shutdown
+#
+# Start before named so as not to break named_wait if named is
+# enabled and /etc/resolv.conf points to ourselves (pihole-FTL).
+#
+#
+# Please add the following line to /etc/rc.conf.local or /etc/rc.conf to
+# enable the pihole-FTL service(s):
+#
+# pihole-FTL_enable (bool):  Set to "NO" by default.
+#                         Set it to "YES" to enable pihole-FTL at boot.
+#
+# Further settings you can change in /etc/rc.conf if desired:
+#
+# pihole-FTL_conf (path):    Set to /usr/local/etc/pihole-FTL.conf by default.
+#                         Set it to another configuration file if you want.
+#
+# pihole-FTL_flags (string): Empty by default. Set it to additional command
+#                         line arguments if desired.
+#
+# pihole-FTL_restart (bool): Set to "YES" by default.
+#                         If "YES", a "reload" action will trigger a "restart"
+#                         if the configuration file has changed, to work
+#                         around a pihole-FTL(8) limitation.
+#
+#
+# Additional actions supported by this script:
+#
+# reload        Reload database files by sending SIGHUP and SIGUSR2.
+#               However, if pihole-FTL_restart is true (see above) and the
+#               configuration file has changed since this rc script has
+#               started pihole-FTL, restart it instead.
+#
+# logstats      Dump statistics information to where pihole-FTL is configured to
+#               log (syslog by default). This sends SIGUSR1 to pihole-FTL.
+#
+
+. /etc/rc.subr
+
+name=pihole-FTL
+rcvar=pihole-FTL_enable
+
+command="/usr/local/sbin/${name}"
+pidfile="/var/run/${name}.pid"
+# timestamp (below) is used to check if "reload" should be a "restart" instead
+timestamp="/var/run/${name}.stamp"
+
+load_rc_config "${name}"
+
+: ${pihole-FTL_enable="NO"}
+: ${pihole-FTL_conf="/usr/local/etc/dnsmasq.conf"}
+: ${pihole-FTL_restart="YES"}
+
+command_args="-x $pidfile -C $pihole-FTL_conf"
+
+required_files="${pihole-FTL_conf}"
+extra_commands="reload logstats"
+
+reload_precmd="reload_pre"
+reload_postcmd="reload_post"
+start_postcmd="timestampconf"
+stop_precmd="rmtimestamp"
+logstats_cmd="logstats"
+
+reload_pre() {
+        if [ "$pihole-FTL_conf" -nt "${timestamp}" ] ; then
+                if checkyesno pihole-FTL_restart ; then
+                        info "restart: $pihole-FTL_conf changed"
+                        exec "$0" restart
+                else
+                        warn "restart required, $pihole-FTL_conf changed"
+                fi
+        fi
+}
+
+reload_post() {
+        kill -USR2 ${rc_pid}
+}
+
+logstats() {
+        kill -USR1 ${rc_pid}
+}
+
+timestampconf() {
+        touch -r "${pihole-FTL_conf}" "${timestamp}"
+}
+
+rmtimestamp() {
+        rm -f "${timestamp}"
+}
+
+run_rc_command "$1"

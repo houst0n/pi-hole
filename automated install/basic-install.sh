@@ -2152,7 +2152,12 @@ FTLinstall() {
     pushd "$(mktemp -d)" > /dev/null || { echo "Unable to make temporary directory for FTL binary download"; return 1; }
 
     # Always replace pihole-FTL.service
-    install -T -m 0755 "${PI_HOLE_LOCAL_REPO}/advanced/Templates/pihole-FTL.service" "/etc/init.d/pihole-FTL"
+    if [ $OS_FAMILY == "linux" ]; then
+      $INSTALL -T -m 0755 "${PI_HOLE_LOCAL_REPO}/advanced/Templates/pihole-FTL.service" "/etc/init.d/pihole-FTL"
+    elif [ $OS_FAMILY == "freebsd" ]; then
+      $INSTALL -T -m 0755 "${PI_HOLE_LOCAL_REPO}/advanced/Templates/pihole-FTL.freebsd.service" "/usr/local/etc/rc.d/pihole-FTL"
+    fi
+
 
     local ftlBranch
     local url
