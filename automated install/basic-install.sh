@@ -1452,9 +1452,9 @@ enable_service() {
 	    fi
 	    echo -e "${OVER}  ${TICK} ${str}"
     elif [ $OS_FAMILY == "freebsd" ]; then
-	    if $(grep "$1" /etc/rc.conf); then
+	    if grep "${1}" /etc/rc.conf &>/dev/null; then
 		    # Make sure it's enabled
-		    $SED -i -e "'s/^${1}_enable=\".*$/${1}_enable="YES"/g'" rc.conf
+		    $SED -i -e "s/^${1}_enable=\".*$/${1}_enable=\"YES\"/g" /etc/rc.conf
 	    else
 		    echo "${1}_enable=\"YES\"" >> /etc/rc.conf
 	    fi
@@ -1824,7 +1824,7 @@ installLogrotate() {
     # Rasbian and Ubuntu at the same time. Hence, we have to
     # customize the logrotate script here in order to reflect
     # the local properties of the /var/log directory
-    logusergroup="$(stat -c '%U %G' /var/log)"
+    logusergroup="$(ls -dl /var/log | awk '{print $4}')"
     # If the variable has a value,
     if [[ ! -z "${logusergroup}" ]]; then
         #
@@ -2532,7 +2532,7 @@ main() {
     fi
 
     # Install and log everything to a file
-    installPihole | tee -a /proc/$$/fd/3
+    installPihole | tee -a ${PI_HOLE_CONF_DIR}/installer.log
 
     # Copy the temp log file into final log location for storage
     copy_to_install_log
