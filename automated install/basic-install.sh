@@ -324,8 +324,8 @@ elif $(uname -a | grep FreeBSD &>/dev/null); then
     PKG_INSTALL=(${PKG_MANAGER} install -y)
     PKG_COUNT="${PKG_MANAGER} info | wc -l"
     INSTALLER_DEPS=(cdialog git newt)
-    PIHOLE_DEPS=(bc bind-tools curl findutils ncat sudo unzip wget libidn2 psmisc)
-    PIHOLE_WEB_DEPS=(lighttpd lighttpd-fastcgi php72 php72-pdo)
+    PIHOLE_DEPS=(bind-tools curl findutils netcat sudo unzip wget libidn2 psmisc)
+    PIHOLE_WEB_DEPS=(lighttpd php72 php72-pdo)
     LIGHTTPD_USER="lighttpd"
     LIGHTTPD_GROUP="lighttpd"
     LIGHTTPD_CFG="lighttpd.conf"
@@ -866,6 +866,7 @@ setStaticIPv4() {
             {
             echo "# Configured via Pi-hole installer"
 	    echo "ifconfig_$PIHOLE_INTERFACE=\"$IPV4_ADDRESS\""
+	    echo "defaultrouter=\"$IPv4gw\""
             }>> "${IFCFG_FILE}"
             {
             echo "# Configured via Pi-hole installer"
@@ -874,6 +875,7 @@ setStaticIPv4() {
             }> /etc/resolv.conf
             # Use ifconfig to immediately set the new address
             ifconfig "${PIHOLE_INTERFACE}" "${IPV4_ADDRESS}"
+	    route add default ${IPv4gw}
             # Show a warning that the user may need to restart
             echo -e "  ${TICK} Set IP address to ${IPV4_ADDRESS%/*}
             You may need to restart after the install is complete"
