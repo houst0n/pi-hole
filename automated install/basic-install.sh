@@ -644,7 +644,12 @@ testIPv6() {
 # A dialog for showing the user about IPv6 blocking
 useIPv6dialog() {
     # Determine the IPv6 address used for blocking
-    IPV6_ADDRESSES=($(ip -6 address | grep 'scope global' | awk '{print $2}'))
+    if [ $OS_FAMILY == "linux" ]; then
+	    IPV6_ADDRESSES=($(ip -6 address | grep 'scope global' | awk '{print $2}'))
+    elif [ $OS_FAMILY == "freebsd" ]; then
+	    IPV6_ADDRESSES=($(ifconfig -a | grep inet6 | grep 'scopeid 0x1' | awk '{print $2}'))
+    fi
+    
 
     # For each address in the array above, determine the type of IPv6 address it is
     for i in "${IPV6_ADDRESSES[@]}"; do
@@ -841,6 +846,34 @@ setStaticIPv4() {
                 # Tell NetworkManagler to read our new sysconfig file
                 nmcli con load "${IFCFG_FILE}" > /dev/null
             fi
+            # Show a warning that the user may need to restart
+            echo -e "  ${TICK} Set IP address to ${IPV4_ADDRESS%/*}
+            You may need to restart after the install is complete"
+        fi
+    elif [ $OS_FAMILY == "freebsd" ] && [ -f "/etc/rc.conf" ];then
+        # If it exists,
+        IFCFG_FILE=/etc/rc.conf
+        IPADDR=$(echo "${IPV4_ADDRESS}" | cut -f1 -d/)
+        # check if the desired IP is already set
+        if grep -Eq "${IPADDR}" "${IFCFG_FILE}"; then
+            echo -e "  ${INFO} Static IP already configured"
+        # Otherwise,
+        else
+            CIDR=$(echo "${IPV4_ADDRESS}" | cut -f2 -d/)
+            # Backup existing interface configuration:
+            cp "${IFCFG_FILE}" "${IFCFG_FILE}".pihole.orig
+            # Build Interface configuration 
+            {
+            echo "# Configured via Pi-hole installer"
+	    echo "ifconfig_$PIHOLE_INTERFACE=\"$IPV4_ADDRESS\""
+            }>> "${IFCFG_FILE}"
+            {
+            echo "# Configured via Pi-hole installer"
+            echo "nameserver $PIHOLE_DNS_1"
+            echo "nameserver $PIHOLE_DNS_2"
+            }> /etc/resolv.conf
+            # Use ifconfig to immediately set the new address
+            ifconfig "${PIHOLE_INTERFACE}" "${IPV4_ADDRESS}"
             # Show a warning that the user may need to restart
             echo -e "  ${TICK} Set IP address to ${IPV4_ADDRESS%/*}
             You may need to restart after the install is complete"
@@ -1472,25 +1505,27 @@ update_package_cache() {
 # Let user know if they have outdated packages on their system and
 # advise them to run a package update at soonest possible.
 notify_package_updates_available() {
-    # Local, named variables
-    local str="Checking ${PKG_MANAGER} for upgraded packages"
-    echo -ne "\\n  ${INFO} ${str}..."
-    # Store the list of packages in a variable
-    updatesToInstall=$(eval "${PKG_COUNT}")
+    if [ $OS_FAMILY == "linux" ]; then
+	    # Local, named variables
+	    local str="Checking ${PKG_MANAGER} for upgraded packages"
+	    echo -ne "\\n  ${INFO} ${str}..."
+	    # Store the list of packages in a variable
+	    updatesToInstall=$(eval "${PKG_COUNT}")
 
-    if [[ -d "/lib/modules/$(uname -r)" ]]; then
-        if [[ "${updatesToInstall}" -eq 0 ]]; then
-            echo -e "${OVER}  ${TICK} ${str}... up to date!"
-            echo ""
-        else
-            echo -e "${OVER}  ${TICK} ${str}... ${updatesToInstall} updates available"
-            echo -e "  ${INFO} ${COL_LIGHT_GREEN}It is recommended to update your OS after installing the Pi-hole! ${COL_NC}"
-            echo ""
-        fi
-    else
-        echo -e "${OVER}  ${CROSS} ${str}
-        Kernel update detected. If the install fails, please reboot and try again\\n"
-    fi
+	    if [[ -d "/lib/modules/$(uname -r)" ]]; then
+		if [[ "${updatesToInstall}" -eq 0 ]]; then
+		    echo -e "${OVER}  ${TICK} ${str}... up to date!"
+		    echo ""
+		else
+		    echo -e "${OVER}  ${TICK} ${str}... ${updatesToInstall} updates available"
+		    echo -e "  ${INFO} ${COL_LIGHT_GREEN}It is recommended to update your OS after installing the Pi-hole! ${COL_NC}"
+		    echo ""
+		fi
+	    else
+		echo -e "${OVER}  ${CROSS} ${str}
+		Kernel update detected. If the install fails, please reboot and try again\\n"
+	    fi
+     fi
 }
 
 # What's this doing outside of a function in the middle of nowhere?
