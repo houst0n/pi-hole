@@ -143,6 +143,8 @@ show_ascii_berry() {
 distro_check() {
 # If apt-get is installed, then we know it's part of the Debian family
 if command -v apt-get &> /dev/null; then
+    # Set the OS family to linux
+    OS_FAMILY="linux"
     # Set some global variables here
     # We don't set them earlier since the family might be Red Hat, so these values would be different
     PKG_MANAGER="apt-get"
@@ -226,6 +228,8 @@ if command -v apt-get &> /dev/null; then
 
 # If apt-get is not found, check for rpm to see if it's a Red Hat family OS
 elif command -v rpm &> /dev/null; then
+    # Set the OS family to linux
+    OS_FAMILY="linux"
     # Then check if dnf or yum is the package manager
     if command -v dnf &> /dev/null; then
         PKG_MANAGER="dnf"
@@ -311,12 +315,21 @@ elif command -v rpm &> /dev/null; then
         exit
     fi
 
-# If neither apt-get or rmp/dnf are found
-else
-    # it's not an OS we can support,
-    echo -e "  ${CROSS} OS distribution not supported"
-    # so exit the installer
-    exit
+# If apt-get/rpm are not found, check for rpm to see if we are on FreeBSD 
+elif $(uname -a | grep FreeBSD &>/dev/null); then
+    # Set the OS family to FreeBSD
+    OS_FAMILY="freebsd"
+    PKG_MANAGER="pkg"
+    UPDATE_PKG_CACHE=":"
+    PKG_INSTALL=(${PKG_MANAGER} install -y)
+    PKG_COUNT="${PKG_MANAGER} info | wc -l"
+    INSTALLER_DEPS=(cdialog git newt)
+    PIHOLE_DEPS=(bc bind-tools curl findutils ncat sudo unzip wget libidn2 psmisc)
+    PIHOLE_WEB_DEPS=(lighttpd lighttpd-fastcgi php72 php72-pdo)
+    LIGHTTPD_USER="lighttpd"
+    LIGHTTPD_GROUP="lighttpd"
+    LIGHTTPD_CFG="lighttpd.conf"
+    PIHOLE_WEB_DEPS+=('php72-json')
 fi
 }
 
@@ -457,21 +470,38 @@ find_IPv4_information() {
     # Named, local variables
     local route
     # Find IP used to route to outside world by checking the the route to Google's public DNS server
-    route=$(ip route get 8.8.8.8)
-    # Use awk to strip out just the interface device as it is used in future commands
-    IPv4dev=$(awk '{for (i=1; i<=NF; i++) if ($i~/dev/) print $(i+1)}' <<< "${route}")
-    # Get just the IP address
-    IPv4bare=$(awk '{print $7}' <<< "${route}")
-    # Append the CIDR notation to the IP address
-    IPV4_ADDRESS=$(ip -o -f inet addr show | grep "${IPv4bare}" |  awk '{print $4}' | awk 'END {print}')
-    # Get the default gateway (the way to reach the Internet)
-    IPv4gw=$(awk '{print $3}' <<< "${route}")
+    if [ $OS_FAMILY == "linux" ]; then 
+	    route=$(ip route get 8.8.8.8)
+	    # Use awk to strip out just the interface device as it is used in future commands
+	    IPv4dev=$(awk '{for (i=1; i<=NF; i++) if ($i~/dev/) print $(i+1)}' <<< "${route}")
+	    # Get just the IP address
+	    IPv4bare=$(awk '{print $7}' <<< "${route}")
+	    # Append the CIDR notation to the IP address
+	    IPV4_ADDRESS=$(ip -o -f inet addr show | grep "${IPv4bare}" |  awk '{print $4}' | awk 'END {print}')
+	    # Get the default gateway (the way to reach the Internet)
+	    IPv4gw=$(awk '{print $3}' <<< "${route}")
+    elif [ $OS_FAMILY == "freebsd" ]; then 
+	    route=$(route get 8.8.8.8)
+	    # Use awk to strip out just the interface device as it is used in future commands
+	    IPv4dev=$(awk '{for (i=1; i<=NF; i++) if ($i~/interface/) print $(i+1)}' <<< "${route}")
+	    # Get just the IP address
+	    IPv4bare=$(ifconfig -f inet:addr $IPv4dev | grep inet | awk '{print $2}')
+	    # Append the CIDR notation to the IP address
+	    IPV4_ADDRESS=$(ifconfig -f inet:cidr $IPv4dev | grep inet | awk '{print $2}')
+	    # Get the default gateway (the way to reach the Internet)
+	    IPv4gw=$(echo "${route}"  | grep gateway | awk '{print $2}')
+    fi
+	
 }
 
 # Get available interfaces that are UP
 get_available_interfaces() {
     # There may be more than one so it's all stored in a variable
-    availableInterfaces=$(ip --oneline link show up | grep -v "lo" | awk '{print $2}' | cut -d':' -f1 | cut -d'@' -f1)
+    if [ $OS_FAMILY == "linux" ]; then 
+	    availableInterfaces=$(ip --oneline link show up | grep -v "lo" | awk '{print $2}' | cut -d':' -f1 | cut -d'@' -f1);
+    elif [ $OS_FAMILY == "freebsd" ]; then
+	    availableInterfaces=$(ifconfig -a | grep flags | grep -v "lo" | cut -d':' -f1 | cut -d'@' -f1);
+    fi
 }
 
 # A function for displaying the dialogs the user sees when first running the installer
