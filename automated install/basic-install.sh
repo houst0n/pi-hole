@@ -329,8 +329,8 @@ elif $(uname -a | grep FreeBSD &>/dev/null); then
     INSTALLER_DEPS=(cdialog git newt)
     PIHOLE_DEPS=(bind-tools curl findutils netcat sudo unzip wget libidn2 psmisc)
     PIHOLE_WEB_DEPS=(lighttpd php72 php72-pdo)
-    LIGHTTPD_USER="lighttpd"
-    LIGHTTPD_GROUP="lighttpd"
+    LIGHTTPD_USER="www"
+    LIGHTTPD_GROUP="www"
     LIGHTTPD_CFG="lighttpd.conf.freebsd"
     PIHOLE_WEB_DEPS+=('php72-json')
 fi
@@ -1431,7 +1431,7 @@ enable_service() {
 	    fi
 	    echo -e "${OVER}  ${TICK} ${str}"
     elif [ $OS_FAMILY == "freebsd" ]; then
-	    if $(grep ${1} /etc/rc.conf); then
+	    if $(grep "$1" /etc/rc.conf); then
 		    # Make sure it's enabled
 		    sed -i -e "'s/^${1}_enable=\".*$/${1}_enable="YES"/g'" rc.conf
 	    else
@@ -1697,7 +1697,11 @@ create_pihole_user() {
         local str="Creating user 'pihole'"
         echo -ne "  ${INFO} ${str}..."
         # create her with the useradd command
-        useradd -r -s /usr/sbin/nologin pihole
+	if [ $OS_FAMILY == "linux" ]; then
+		useradd -r -s /usr/sbin/nologin pihole
+	elif [ $OS_FAMILY == "freebsd" ]; then
+		pw useradd -n pihole -s /sbin/nologin
+	fi
         echo -ne "${OVER}  ${TICK} ${str}"
     fi
 }
@@ -1846,7 +1850,11 @@ installPihole() {
             chown ${LIGHTTPD_USER}:${LIGHTTPD_GROUP} /var/www/html
             chmod 775 /var/www/html
             # Give pihole access to the Web server group
-            usermod -a -G ${LIGHTTPD_GROUP} pihole
+	    if [ $OS_FAMILY == "linux" ]; then
+		    usermod -a -G ${LIGHTTPD_GROUP} pihole
+	    elif [ $OS_FAMILY == "freebsd" ]; then
+		    pw groupmod ${LIGHTTPD_GROUP} -M pihole
+	    fi
             # If the lighttpd command is executable,
             if [[ -x "$(command -v lighty-enable-mod)" ]]; then
                 # enable fastcgi and fastcgi-php
